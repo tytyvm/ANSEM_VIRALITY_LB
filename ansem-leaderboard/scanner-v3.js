@@ -1,4 +1,4 @@
- #!/usr/bin/env node
+#!/usr/bin/env node
 /**
  * $ANSEM Daily Leaderboard Scanner  (v3)
  * ---------------------------------------------------------
