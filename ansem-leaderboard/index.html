@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>$ANSEM Bagwork Leaderboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0D0B1A;
+    --panel: #141126;
+    --line: #262040;
+    --text: #EDEBFF;
+    --dim: #8B84B0;
+    --sol-a: #9945FF;
+    --sol-b: #14F195;
+    --gold: #FFC94A;
+    --silver: #C9CDDB;
+    --bronze: #D08B5B;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    min-height: 100vh;
+    padding-bottom: 80px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 20px; }
+
+  header { padding: 56px 0 28px; border-bottom: 1px solid var(--line); }
+  .eyebrow { font-size: 11px; letter-spacing: 0.22em; color: var(--dim); text-transform: uppercase; }
+  h1 {
+    font-family: 'Unbounded', sans-serif;
+    font-weight: 900;
+    font-size: clamp(28px, 6vw, 52px);
+    line-height: 1.05;
+    margin: 10px 0 14px;
+  }
+  h1 .ticker {
+    background: linear-gradient(90deg, var(--sol-a), var(--sol-b));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .meta { font-size: 12px; color: var(--dim); display: flex; gap: 24px; flex-wrap: wrap; }
+  .meta b { color: var(--text); font-weight: 600; }
+
+  nav { display: flex; gap: 8px; margin: 24px 0; }
+  .tab {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px; font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 10px 18px;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--dim);
+    cursor: pointer;
+  }
+  .tab.active { color: var(--bg); background: var(--text); border-color: var(--text); }
+  .tab:focus-visible { outline: 2px solid var(--sol-b); outline-offset: 2px; }
+
+  .row {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 14px;
+    padding: 16px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    margin-bottom: 10px;
+    text-decoration: none;
+    color: inherit;
+  }
+  a.row:hover { border-color: var(--sol-a); }
+
+  .rank {
+    font-family: 'Unbounded', sans-serif;
+    font-weight: 700; font-size: 15px;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding-top: 2px; color: var(--dim);
+  }
+  .rank.r1 { color: var(--gold); }
+  .rank.r2 { color: var(--silver); }
+  .rank.r3 { color: var(--bronze); }
+
+  .who { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .handle { font-weight: 600; font-size: 14px; }
+  .name { color: var(--dim); font-size: 12px; }
+  .snippet { font-size: 13px; line-height: 1.55; color: var(--text); opacity: 0.9; margin-bottom: 12px; overflow-wrap: anywhere; }
+
+  /* signature: the reach bar */
+  .bar-track { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+  .bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--sol-a), var(--sol-b)); }
+
+  .stats { display: flex; gap: 18px; font-size: 12px; color: var(--dim); flex-wrap: wrap; }
+  .stats b { color: var(--text); font-weight: 600; }
+  .impr b { color: var(--sol-b); }
+
+  footer { margin-top: 40px; font-size: 11px; color: var(--dim); line-height: 1.7; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .bar-fill { transform-origin: left; animation: grow 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+    @keyframes grow { from { transform: scaleX(0); } }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Bagwork Leaderboard · Ranked by Impressions</div>
+    <h1><span class="ticker">$ANSEM</span> VIRALITY BOARD</h1>
+    <div class="meta">
+      <span>Posts tracked: <b id="m-total"></b></span>
+      <span>Last scan: <b id="m-updated"></b></span>
+      <span>Window: <b>rolling · merged across runs</b></span>
+    </div>
+  </header>
+
+  <nav>
+    <button class="tab active" id="tab-posts" onclick="show('posts')">TOP 20 POSTS</button>
+    <button class="tab" id="tab-accounts" onclick="show('accounts')">TOP 50 ACCOUNTS</button>
+  </nav>
+
+  <main id="board"></main>
+
+  <footer>
+    Impressions are X's own view counts (public_metrics). Accounts are ranked by total
+    impressions across every $ANSEM post they made. Re-run scanner.js to refresh —
+    each run merges into the running totals.
+  </footer>
+</div>
+
+<script>
+const DATA = {"generated":"2026-07-07T04:19:16.989Z","totalTracked":989,"posts":[{"id":"2074339600454357210","author_id":"1836045424467046400","text":"Chart idea $ANSEM \n\nIf HTF closes above blue line, plan is postponed for a bit. But it's just a matter of time for the yellow zone. https://t.co/qMac4JPwnb https://t.co/ChxUDLtsFK","created_at":"2026-07-07T03:47:54.000Z","impressions":6626,"likes":21,"retweets":1,"replies":5,"username":"chartexpt","name":"HaxKai"},{"id":"2074345688121700748","author_id":"1219599867347120128","text":"it changed a lot of retailers' lives.\n\nimagine buying at almost any point over the past 30 days and still being in profit today.\n\nmany people have already made six figures from solana:9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump.\n\nat the same time, whale wallets are sitting on https://t.co/TiTaKQ6VBG","created_at":"2026-07-07T04:12:06.000Z","impressions":2083,"likes":2,"retweets":0,"replies":1,"username":"gem_detecter","name":"🕵️GEM DETECTER🕵️"},{"id":"2074342101282611218","author_id":"1507570060734443520","text":"500m tomorrow for $ansem","created_at":"2026-07-07T03:57:51.000Z","impressions":1860,"likes":56,"retweets":7,"replies":26,"username":"SolLunix","name":"Lunix"},{"id":"2074346101835219434","author_id":"1379774059840344064","text":"$LEVI - $3.79M MCap\n\nCA: 6baGyq4HLbUn93MQUGFqBktpXP8BRjpoxSsAap4ppump \n\nTHE WHITE BULL\n\nThis memecoin seems to follow the same narrative as $ANSEM.\n\nIt's been mentioned several times by KOL @LeviRietveld.\n\nFirst there was Black Bull, now there's White Bull. 🐂⚪\n\n#DYOR https://t.co/nXDJ9wRe0C","created_at":"2026-07-07T04:13:44.000Z","impressions":1539,"likes":0,"retweets":0,"replies":0,"username":"solana_daily","name":"Solana Daily"},{"id":"2074342551818047940","author_id":"1347777544649641985","text":"Hey everyone! Looking for a short and longform video editor. Trying to cook some solana:9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump content for the family, but wanna up the production from my typical video style. Comment down below and ill dm/reply!","created_at":"2026-07-07T03:59:38.000Z","impressions":1464,"likes":5,"retweets":1,"replies":5,"username":"Yourpop8","name":"YourPOP"},{"id":"2074346225772679429","author_id":"1379774059840344064","text":"$LEVI - $3.79M MCap\n\nCA: 6baGyq4HLbUn93MQUGFqBktpXP8BRjpoxSsAap4ppump \n\nTHE WHITE BULL\n\nThis memecoin seems to follow the same narrative as $ANSEM.\n\nIt's been mentioned several times by @LeviRietveld.\n\nFirst there was Black Bull, now there's White Bull. 🐂⚪\n\n#DYOR https://t.co/GhZwLShaHj","created_at":"2026-07-07T04:14:14.000Z","impressions":1439,"likes":5,"retweets":0,"replies":0,"username":"solana_daily","name":"Solana Daily"},{"id":"2074341587652591846","author_id":"798785588048470017","text":"大家赶紧看SOL的 $Ansem 已经4亿市值，我们BNB Chain 的 $CZ 和 $HEYI 分别是5800万和250万上下，希望CZ赶紧超越Ansem ，然后母鸡带小鸡heyi 😂，冲阿\n\n#CZ #Heyi #Ansem https://t.co/Wu2MlRrmOT","created_at":"2026-07-07T03:55:48.000Z","impressions":1235,"likes":8,"retweets":2,"replies":5,"username":"nancy_c813","name":"Nancy"},{"id":"2074346715906224525","author_id":"1153886754518290433","text":"it’s another beautiful day to\n\n- chase the bag\n- reply 2k strangers \n- bull post solana:9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump \n\ntoday will be good🙂‍↔️ https://t.co/2WW7PPHagV","created_at":"2026-07-07T04:16:11.000Z","impressions":1137,"likes":22,"retweets":1,"replies":18,"username":"TeaonaX","name":"TEAONA🦅"},{"id":"2074340425754976510","author_id":"1252897738448080898","text":"👀 $ANSEM &amp; $CZ: Attention is the ultimate liquidity\n\n$ANSEM didn’t just print - it rewrote the script.\n\nA community took a KOL’s name @blknoiz06, wallet, creator fees, and Solana trenches energy, packaged it into a token, then waited for the man himself to lightly tap the wheel. https://t.co/WV8nTRSuYy","created_at":"2026-07-07T03:51:11.000Z","impressions":1075,"likes":14,"retweets":0,"replies":2,"username":"rosetina_degen9","name":"Rosetina Degen 🎩🎒"},{"id":"2074341949289439495","author_id":"1348825979796512768","text":"Is there any Dex/CEX offering perps for $Ansem ?","created_at":"2026-07-07T03:57:14.000Z","impressions":1003,"likes":1,"retweets":0,"replies":3,"username":"mr_pschmitt","name":"mrpatrickschmitt"},{"id":"2074340014172025152","author_id":"1416680666184306689","text":"$ANSEM市值超越 $TRUMP，超95%持有者盈利 \n\n据 Lookonchain 监测，$ANSEM 市值已超过 $TRUMP。近 100 万投资者在 $TRUMP 上亏损，而 $ANSEM 的 12 万名持有者中，超过 95% 目前处于盈利状态。 https://t.co/sKLrryP7Ho https://t.co/Hq018MdGvi","created_at":"2026-07-07T03:49:33.000Z","impressions":962,"likes":0,"retweets":0,"replies":0,"username":"PANewsCN","name":"PANews丨APP全面升级"},{"id":"2074345183638888935","author_id":"87847949","text":"Late night thoughts\n\nsolana:9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump is inspiring a wave of generosity and community building I haven’t seen personally since the NFT days in 2021\n\nIt’s inspiring\n\nIm seeing millions of dollars being airdropped to strangers on a daily basis","created_at":"2026-07-07T04:10:05.000Z","impressions":650,"likes":19,"retweets":1,"replies":12,"username":"youfadedwealth","name":"Faded | Clipur.com 🐂🀄️"},{"id":"2074340282481725688","author_id":"1779735260642922496","text":"刚刷到， $ANSEM 市值已经反超现在的 $Trump 了！\n\n大黑牛12万持仓地址里，超95%都在盈利……\n\n这么高的浮盈比例，真的有点吓人\n\n是真的狂欢还是泡沫？👀 https://t.co/RNS1ZNFrXp","created_at":"2026-07-07T03:50:37.000Z","impressions":621,"likes":17,"retweets":0,"replies":19,"username":"XDmnnn0616","name":"XDmnnn不淡（互关版）"},{"id":"2074347028247715877","author_id":"1514218190691344449","text":"it’s another beautiful day to\n\n- chase the bag\n- reply 2k strangers \n- bull post solana:9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump \n\ntoday will be good🙂‍↔️ https://t.co/YpzJs8BCoF","created_at":"2026-07-07T04:17:25.000Z","impressions":579,"likes":2,"retweets":1,"replies":0,"username":"Samtop","name":"Samtop 👽🍂"},{"id":"2074338544315924868","author_id":"2429141460","text":"$Ansem has reached a new ATH of \n$415m mc","created_at":"2026-07-07T03:43:42.000Z","impressions":501,"likes":1,"retweets":0,"replies":1,"username":"xoxoo_sol","name":"Crypto Girl"},{"id":"2074346752124113183","author_id":"2363500093","text":"Announcement for the trenches tomorrow at 7pm CST!\n\nMeme Magic Is Real \n\nsolana:8oQEW25mcVzeWvcjkGup9ob3KafVMNdzAi8XXmmWpump solana:9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump","created_at":"2026-07-07T04:16:19.000Z","impressions":446,"likes":9,"retweets":1,"replies":2,"username":"ogafroman","name":"Afroman"},{"id":"2074342148728582627","author_id":"967316062080348160","text":"$ANSEM just flipped $TRUMP in market cap.\n\nJust imagine. A memecoin an anon dev launched last week has more value than the personal token of the sitting US president.\n\nThe most powerful man on earth just got fucked by a guy with a video game profile picture and a bullish tweet https://t.co/yRFGCrX1Hf","created_at":"2026-07-07T03:58:02.000Z","impressions":435,"likes":1,"retweets":0,"replies":0,"username":"Rus_Khairullin","name":"Ruslan Khairullin"},{"id":"2074346158491885832","author_id":"2429141460","text":"The market cap of $ANSEM has flipped $TRUMP.\n\nNearly 1M investors lost money on $TRUMP, while over 95% of $ANSEM's 120K holders are currently in profit. https://t.co/egf1PGNJA7","created_at":"2026-07-07T04:13:58.000Z","impressions":401,"likes":0,"retweets":0,"replies":0,"username":"xoxoo_sol","name":"Crypto Girl"},{"id":"2074343947187671085","author_id":"1387614140038979588","text":"$ANSEM 早上市值突破 4.5 亿。对于 @blknoiz06 ，我愿称之为史上最伟大的操盘手。他不仅盘活了Solana链上生态，为其带来了海量流量和注意力，大幅提升了链上活跃度；\n\n同时还倒逼币安做出应对，推出 $CZ 来争夺市场注意力，间接为BSC进行了一次续命。要不然他们大概率已经放弃meme，全面转向美股了。 https://t.co/G8Nn64KbIE https://t.co/UJjU5uwEPC","created_at":"2026-07-07T04:05:11.000Z","impressions":364,"likes":2,"retweets":0,"replies":1,"username":"0x_SixxxVC","name":"六子｜Funny Six"},{"id":"2074341348178821455","author_id":"1461842473387376642","text":"You know everyone suckin cok for airdrops on $ansem- We should ask for people’s wallets and drop them NFTs of neon cow shit - name em Bullshittio","created_at":"2026-07-07T03:54:51.000Z","impressions":345,"likes":6,"retweets":0,"replies":1,"username":"_EAZY_DUZ_IT","name":"EΛZY"}],"accounts":[{"username":"chartexpt","name":"HaxKai","followers":63480,"impressions":6626,"likes":21,"retweets":1,"posts":1,"bestPostId":"2074339600454357210","bestPostImpressions":6626},{"username":"solana_daily","name":"Solana Daily","followers":159114,"impressions":2978,"likes":5,"retweets":0,"posts":2,"bestPostId":"2074346101835219434","bestPostImpressions":1539},{"username":"gem_detecter","name":"🕵️GEM DETECTER🕵️","followers":128667,"impressions":2083,"likes":2,"retweets":0,"posts":1,"bestPostId":"2074345688121700748","bestPostImpressions":2083},{"username":"SolLunix","name":"Lunix","followers":96553,"impressions":1860,"likes":56,"retweets":7,"posts":1,"bestPostId":"2074342101282611218","bestPostImpressions":1860},{"username":"Yourpop8","name":"YourPOP","followers":251341,"impressions":1464,"likes":5,"retweets":1,"posts":1,"bestPostId":"2074342551818047940","bestPostImpressions":1464},{"username":"nancy_c813","name":"Nancy","followers":102135,"impressions":1235,"likes":8,"retweets":2,"posts":1,"bestPostId":"2074341587652591846","bestPostImpressions":1235},{"username":"TeaonaX","name":"TEAONA🦅","followers":49647,"impressions":1137,"likes":22,"retweets":1,"posts":1,"bestPostId":"2074346715906224525","bestPostImpressions":1137},{"username":"rosetina_degen9","name":"Rosetina Degen 🎩🎒","followers":9895,"impressions":1075,"likes":14,"retweets":0,"posts":1,"bestPostId":"2074340425754976510","bestPostImpressions":1075},{"username":"mr_pschmitt","name":"mrpatrickschmitt","followers":83762,"impressions":1003,"likes":1,"retweets":0,"posts":1,"bestPostId":"2074341949289439495","bestPostImpressions":1003},{"username":"PANewsCN","name":"PANews丨APP全面升级","followers":98058,"impressions":962,"likes":0,"retweets":0,"posts":1,"bestPostId":"2074340014172025152","bestPostImpressions":962},{"username":"xoxoo_sol","name":"Crypto Girl","followers":14941,"impressions":902,"likes":1,"retweets":0,"posts":2,"bestPostId":"2074338544315924868","bestPostImpressions":501},{"username":"youfadedwealth","name":"Faded | Clipur.com 🐂🀄️","followers":49495,"impressions":650,"likes":19,"retweets":1,"posts":1,"bestPostId":"2074345183638888935","bestPostImpressions":650},{"username":"XDmnnn0616","name":"XDmnnn不淡（互关版）","followers":6515,"impressions":621,"likes":17,"retweets":0,"posts":1,"bestPostId":"2074340282481725688","bestPostImpressions":621},{"username":"Samtop","name":"Samtop 👽🍂","followers":75219,"impressions":579,"likes":2,"retweets":1,"posts":1,"bestPostId":"2074347028247715877","bestPostImpressions":579},{"username":"ogafroman","name":"Afroman","followers":102000,"impressions":446,"likes":9,"retweets":1,"posts":1,"bestPostId":"2074346752124113183","bestPostImpressions":446},{"username":"Rus_Khairullin","name":"Ruslan Khairullin","followers":128539,"impressions":435,"likes":1,"retweets":0,"posts":1,"bestPostId":"2074342148728582627","bestPostImpressions":435},{"username":"0x_SixxxVC","name":"六子｜Funny Six","followers":11451,"impressions":364,"likes":2,"retweets":0,"posts":1,"bestPostId":"2074343947187671085","bestPostImpressions":364},{"username":"0xTonyaCrypto","name":"Hisao ART","followers":27247,"impressions":355,"likes":1,"retweets":0,"posts":3,"bestPostId":"2074338515786080569","bestPostImpressions":134},{"username":"special_eric","name":"special 🐂🀄️","followers":11184,"impressions":353,"likes":19,"retweets":1,"posts":5,"bestPostId":"2074339724894851505","bestPostImpressions":134},{"username":"_EAZY_DUZ_IT","name":"EΛZY","followers":1798,"impressions":345,"likes":6,"retweets":0,"posts":1,"bestPostId":"2074341348178821455","bestPostImpressions":345},{"username":"juancena2027","name":"Juan Cena","followers":11048,"impressions":343,"likes":3,"retweets":1,"posts":1,"bestPostId":"2074340331009482829","bestPostImpressions":343},{"username":"cryptoyamal","name":"Crypto Yamal","followers":9809,"impressions":279,"likes":11,"retweets":3,"posts":1,"bestPostId":"2074338431493410932","bestPostImpressions":279},{"username":"Dan_et_","name":"DAN.€TH","followers":9811,"impressions":272,"likes":20,"retweets":1,"posts":1,"bestPostId":"2074339222618558912","bestPostImpressions":272},{"username":"Mapemaofweb3","name":"MAPEMA","followers":11164,"impressions":267,"likes":36,"retweets":0,"posts":1,"bestPostId":"2074342681518440906","bestPostImpressions":267},{"username":"Foreskinnnnn","name":"Foreskin","followers":2978,"impressions":240,"likes":7,"retweets":0,"posts":1,"bestPostId":"2074339378990813540","bestPostImpressions":240},{"username":"XYOPepe","name":"Pepe","followers":25792,"impressions":239,"likes":1,"retweets":0,"posts":1,"bestPostId":"2074341134835302845","bestPostImpressions":239},{"username":"blkloktar06","name":"Lok'Tar 🐂🀄️","followers":116835,"impressions":238,"likes":1,"retweets":0,"posts":1,"bestPostId":"2074345504272712060","bestPostImpressions":238},{"username":"BitKanOfficial","name":"BitKan","followers":59108,"impressions":215,"likes":0,"retweets":0,"posts":1,"bestPostId":"2074345385825382848","bestPostImpressions":215},{"username":"mangosteenbjxy","name":"deb0cs2","followers":3265,"impressions":181,"likes":4,"retweets":0,"posts":4,"bestPostId":"2074343220171977094","bestPostImpressions":88},{"username":"boredinvesting_","name":"bored 🐂🀄️","followers":3019,"impressions":165,"likes":4,"retweets":0,"posts":2,"bestPostId":"2074338744455315750","bestPostImpressions":109},{"username":"tyhvip","name":"sunflower🐂🀄️","followers":16631,"impressions":150,"likes":0,"retweets":0,"posts":1,"bestPostId":"2074339838590066783","bestPostImpressions":150},{"username":"Kaiz_294","name":"Kaiz 🐂🀄️","followers":9681,"impressions":146,"likes":5,"retweets":0,"posts":1,"bestPostId":"2074341121002725496","bestPostImpressions":146},{"username":"guesswhoiiamm","name":"iAm-paquetta","followers":10659,"impressions":142,"likes":10,"retweets":4,"posts":1,"bestPostId":"2074346907460063682","bestPostImpressions":142},{"username":"DeARKdev","name":"nanunations.ark","followers":2498,"impressions":137,"likes":6,"retweets":2,"posts":2,"bestPostId":"2074338429068800303","bestPostImpressions":90},{"username":"BTCOld8","name":"老八只白嫖","followers":28897,"impressions":134,"likes":1,"retweets":0,"posts":1,"bestPostId":"2074347075781972145","bestPostImpressions":134},{"username":"gem_insider","name":"💎GEM INSIDER💎","followers":166576,"impressions":134,"likes":0,"retweets":0,"posts":1,"bestPostId":"2074344403930604017","bestPostImpressions":134},{"username":"realchideraa","name":"COLLINS","followers":8061,"impressions":130,"likes":3,"retweets":0,"posts":2,"bestPostId":"2074343434328920111","bestPostImpressions":76},{"username":"syfaeth","name":"Syfa Crypto","followers":10187,"impressions":129,"likes":5,"retweets":4,"posts":1,"bestPostId":"2074342140281520468","bestPostImpressions":129},{"username":"onchain_vol","name":"onchain_vol","followers":1994,"impressions":127,"likes":2,"retweets":0,"posts":1,"bestPostId":"2074343794254733793","bestPostImpressions":127},{"username":"DinglBear","name":"Dingle Berry","followers":439,"impressions":124,"likes":2,"retweets":0,"posts":1,"bestPostId":"2074344225949495494","bestPostImpressions":124},{"username":"swerteitis","name":"cyyyyyy🎀🌺","followers":196,"impressions":121,"likes":1,"retweets":1,"posts":1,"bestPostId":"2074338465148194828","bestPostImpressions":121},{"username":"RealThepo","name":"Thepo","followers":42,"impressions":120,"likes":1,"retweets":0,"posts":1,"bestPostId":"2074345599508627618","bestPostImpressions":120},{"username":"ifwraviel","name":"RAVIEL","followers":36583,"impressions":114,"likes":2,"retweets":0,"posts":2,"bestPostId":"2074340665333281218","bestPostImpressions":57},{"username":"MisterNameless","name":"Nameless /.^","followers":7963,"impressions":107,"likes":0,"retweets":0,"posts":1,"bestPostId":"2074341324124213326","bestPostImpressions":107},{"username":"BMocas15381","name":"x/Mocas 🐂🀄️ ( IT’S $ANSEM CYCLE 🖤 )","followers":1420,"impressions":106,"likes":0,"retweets":0,"posts":2,"bestPostId":"2074339968474816657","bestPostImpressions":88},{"username":"Dekingsweb3","name":"DE KING$ W3B 🪽👑","followers":9578,"impressions":103,"likes":0,"retweets":0,"posts":1,"bestPostId":"2074347032181882887","bestPostImpressions":103},{"username":"krushkasgreens","name":"Krushkas","followers":106,"impressions":98,"likes":0,"retweets":0,"posts":1,"bestPostId":"2074341718221361200","bestPostImpressions":98},{"username":"azmaeenx","name":"AZMAEEN","followers":2482,"impressions":97,"likes":9,"retweets":0,"posts":1,"bestPostId":"2074343827796824114","bestPostImpressions":97},{"username":"McM13169","name":"CREATIVE of goodlife🐂🀄️","followers":28,"impressions":96,"likes":0,"retweets":0,"posts":8,"bestPostId":"2074343402750062962","bestPostImpressions":21},{"username":"Iam_alienbrain","name":"Iam_alienbrain","followers":2273,"impressions":95,"likes":14,"retweets":0,"posts":2,"bestPostId":"2074343088953196577","bestPostImpressions":92}]};
+
+const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1).replace(/\.0$/,'') + 'M'
+             : n >= 1e3 ? (n/1e3).toFixed(1).replace(/\.0$/,'') + 'K'
+             : String(n);
+const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+document.getElementById('m-total').textContent = DATA.totalTracked.toLocaleString();
+document.getElementById('m-updated').textContent = new Date(DATA.generated).toLocaleString();
+
+function rankClass(i) { return i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : ''; }
+
+function renderPosts() {
+  const max = Math.max(...DATA.posts.map(p => p.impressions), 1);
+  return DATA.posts.map((p, i) => `
+    <a class="row" href="https://x.com/${esc(p.username)}/status/${esc(p.id)}" target="_blank" rel="noopener">
+      <div class="rank ${rankClass(i)}">${String(i+1).padStart(2,'0')}</div>
+      <div>
+        <div class="who"><span class="handle">@${esc(p.username)}</span><span class="name">${esc(p.name)}</span></div>
+        <div class="snippet">${esc(p.text.length > 180 ? p.text.slice(0,180) + '…' : p.text)}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(p.impressions/max*100, 1.5)}%"></div></div>
+        <div class="stats">
+          <span class="impr"><b>${fmt(p.impressions)}</b> views</span>
+          <span><b>${fmt(p.likes)}</b> likes</span>
+          <span><b>${fmt(p.retweets)}</b> reposts</span>
+          <span><b>${fmt(p.replies)}</b> replies</span>
+        </div>
+      </div>
+    </a>`).join('');
+}
+
+function renderAccounts() {
+  const max = Math.max(...DATA.accounts.map(a => a.impressions), 1);
+  return DATA.accounts.map((a, i) => `
+    <a class="row" href="https://x.com/${esc(a.username)}" target="_blank" rel="noopener">
+      <div class="rank ${rankClass(i)}">${String(i+1).padStart(2,'0')}</div>
+      <div>
+        <div class="who"><span class="handle">@${esc(a.username)}</span><span class="name">${esc(a.name)} · ${fmt(a.followers)} followers</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(a.impressions/max*100, 1.5)}%"></div></div>
+        <div class="stats">
+          <span class="impr"><b>${fmt(a.impressions)}</b> total views</span>
+          <span><b>${a.posts}</b> $ANSEM posts</span>
+          <span><b>${fmt(a.likes)}</b> likes</span>
+          <span>best post: <b>${fmt(a.bestPostImpressions)}</b> views</span>
+        </div>
+      </div>
+    </a>`).join('');
+}
+
+function show(which) {
+  document.getElementById('tab-posts').classList.toggle('active', which === 'posts');
+  document.getElementById('tab-accounts').classList.toggle('active', which === 'accounts');
+  document.getElementById('board').innerHTML = which === 'posts' ? renderPosts() : renderAccounts();
+}
+show('posts');
+</script>
+</body>
+</html>
