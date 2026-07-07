@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>$ANSEM Bagwork Leaderboard</title>
+<title>$ANSEM Daily Leaderboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -47,7 +47,7 @@
   .meta { font-size: 12px; color: var(--dim); display: flex; gap: 24px; flex-wrap: wrap; }
   .meta b { color: var(--text); font-weight: 600; }
 
-  nav { display: flex; gap: 8px; margin: 24px 0; }
+  nav { display: flex; gap: 8px; margin: 24px 0; flex-wrap: wrap; }
   .tab {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 13px; font-weight: 600;
@@ -61,6 +61,8 @@
   }
   .tab.active { color: var(--bg); background: var(--text); border-color: var(--text); }
   .tab:focus-visible { outline: 2px solid var(--sol-b); outline-offset: 2px; }
+
+  .board-note { font-size: 12px; color: var(--dim); margin: -8px 0 18px; }
 
   .row {
     display: grid;
@@ -91,13 +93,14 @@
   .name { color: var(--dim); font-size: 12px; }
   .snippet { font-size: 13px; line-height: 1.55; color: var(--text); opacity: 0.9; margin-bottom: 12px; overflow-wrap: anywhere; }
 
-  /* signature: the reach bar */
   .bar-track { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
   .bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--sol-a), var(--sol-b)); }
 
   .stats { display: flex; gap: 18px; font-size: 12px; color: var(--dim); flex-wrap: wrap; }
   .stats b { color: var(--text); font-weight: 600; }
   .impr b { color: var(--sol-b); }
+
+  .empty { padding: 40px 20px; text-align: center; color: var(--dim); font-size: 13px; border: 1px dashed var(--line); border-radius: 12px; }
 
   footer { margin-top: 40px; font-size: 11px; color: var(--dim); line-height: 1.7; }
 
@@ -110,26 +113,29 @@
 <body>
 <div class="wrap">
   <header>
-    <div class="eyebrow">Bagwork Leaderboard · Ranked by Impressions</div>
+    <div class="eyebrow">Daily Bagwork Leaderboard · Ranked by Impressions</div>
     <h1><span class="ticker">$ANSEM</span> VIRALITY BOARD</h1>
     <div class="meta">
+      <span>Board date: <b id="m-date"></b></span>
       <span>Posts tracked: <b id="m-total"></b></span>
       <span>Last scan: <b id="m-updated"></b></span>
-      <span>Window: <b>rolling · merged across runs</b></span>
     </div>
   </header>
 
   <nav>
-    <button class="tab active" id="tab-posts" onclick="show('posts')">TOP 20 POSTS</button>
+    <button class="tab active" id="tab-today" onclick="show('today')">TODAY'S TOP 20</button>
+    <button class="tab" id="tab-alltime" onclick="show('alltime')">ALL-TIME TOP 20</button>
     <button class="tab" id="tab-accounts" onclick="show('accounts')">TOP 50 ACCOUNTS</button>
   </nav>
 
+  <div class="board-note" id="board-note"></div>
   <main id="board"></main>
 
   <footer>
-    Impressions are X's own view counts (public_metrics). Accounts are ranked by total
-    impressions across every $ANSEM post they made. Re-run scanner.js to refresh —
-    each run merges into the running totals.
+    Impressions are X's own view counts (public_metrics). TODAY = posts from the last
+    24 hours before the scan. ALL-TIME = the biggest posts since tracking began — view
+    counts on tracked posts get re-checked each day so numbers keep maturing. Accounts
+    are ranked by total impressions across every tracked $ANSEM post they made.
   </footer>
 </div>
 
@@ -141,14 +147,17 @@ const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1).replace(/\.0$/,'') + 'M'
              : String(n);
 const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+const scanDate = new Date(DATA.generated);
+document.getElementById('m-date').textContent = scanDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 document.getElementById('m-total').textContent = DATA.totalTracked.toLocaleString();
-document.getElementById('m-updated').textContent = new Date(DATA.generated).toLocaleString();
+document.getElementById('m-updated').textContent = scanDate.toLocaleString();
 
 function rankClass(i) { return i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : ''; }
 
-function renderPosts() {
-  const max = Math.max(...DATA.posts.map(p => p.impressions), 1);
-  return DATA.posts.map((p, i) => `
+function postRows(list) {
+  if (!list.length) return '<div class="empty">No posts captured in this window yet — check back after the next scan.</div>';
+  const max = Math.max(...list.map(p => p.impressions), 1);
+  return list.map((p, i) => `
     <a class="row" href="https://x.com/${esc(p.username)}/status/${esc(p.id)}" target="_blank" rel="noopener">
       <div class="rank ${rankClass(i)}">${String(i+1).padStart(2,'0')}</div>
       <div>
@@ -165,7 +174,8 @@ function renderPosts() {
     </a>`).join('');
 }
 
-function renderAccounts() {
+function accountRows() {
+  if (!DATA.accounts.length) return '<div class="empty">No accounts tracked yet.</div>';
   const max = Math.max(...DATA.accounts.map(a => a.impressions), 1);
   return DATA.accounts.map((a, i) => `
     <a class="row" href="https://x.com/${esc(a.username)}" target="_blank" rel="noopener">
@@ -183,12 +193,22 @@ function renderAccounts() {
     </a>`).join('');
 }
 
+const notes = {
+  today: "The most-viewed $ANSEM posts of the last 24 hours.",
+  alltime: "The biggest $ANSEM posts since tracking began. View counts keep maturing as daily scans re-check them.",
+  accounts: "Ranked by total impressions across every tracked $ANSEM post."
+};
+
 function show(which) {
-  document.getElementById('tab-posts').classList.toggle('active', which === 'posts');
-  document.getElementById('tab-accounts').classList.toggle('active', which === 'accounts');
-  document.getElementById('board').innerHTML = which === 'posts' ? renderPosts() : renderAccounts();
+  for (const t of ['today', 'alltime', 'accounts'])
+    document.getElementById('tab-' + t).classList.toggle('active', which === t);
+  document.getElementById('board-note').textContent = notes[which];
+  document.getElementById('board').innerHTML =
+    which === 'today' ? postRows(DATA.today)
+    : which === 'alltime' ? postRows(DATA.allTime)
+    : accountRows();
 }
-show('posts');
+show('today');
 </script>
 </body>
 </html>

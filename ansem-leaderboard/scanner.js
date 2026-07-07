@@ -1,17 +1,28 @@
-#!/usr/bin/env node
+ #!/usr/bin/env node
 /**
- * $ANSEM Leaderboard Scanner  (v2)
+ * $ANSEM Daily Leaderboard Scanner  (v3)
  * ---------------------------------------------------------
- * Three passes per run:
- *   1. TOP crawl      — X's "relevancy" sort, catches the biggest
- *                       posts across the full 7-day window
- *   2. NEWEST crawl   — recency sort, catches fresh posts
- *   3. REFRESH pass   — re-checks view counts on posts already
- *                       tracked, so impressions mature over time
+ * Built for cheap daily runs (~$0.75–1.50/day):
+ *
+ *   1. DAILY crawl    — top posts of the LAST 24 HOURS ONLY
+ *                       (relevancy sort). Stops buying pages
+ *                       early once most posts fall below
+ *                       MIN_VIEWS — no paying for filler.
+ *   2. REFRESH pass   — re-checks view counts on the top 50
+ *                       already-tracked posts so yesterday's
+ *                       numbers stay honest and late bloomers
+ *                       climb the all-time board.
+ *
+ * The page shows three boards from the same data:
+ *   TODAY (last 24h) · ALL-TIME TOP 20 · TOP 50 ACCOUNTS
+ *
+ * If X replies "credits depleted" (402), this run FAILS LOUDLY
+ * (red X in GitHub Actions) instead of quietly publishing a
+ * half-empty board. Top up credits, re-run, done.
  *
  * USAGE (GitHub Actions runs this for you):
  *   X_BEARER_TOKEN="token" node scanner.js
- *   Options: --pages=3 (pages per crawl)  --refresh=300 (posts to refresh)
+ *   Options: --pages=3 (max daily pages)  --refresh=50
  *   Preview: node scanner.js --mock
  */
 
@@ -20,11 +31,14 @@ const path = require('path');
 
 // ------------------------- CONFIG -------------------------
 const QUERY = '($ANSEM OR "9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump") -is:retweet';
+const CONTRACT = '9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump';
+const MIN_VIEWS = 5000;        // early-stop: if most of a page is below this, stop buying pages
 const pagesArg = process.argv.find(a => a.startsWith('--pages='));
 const refreshArg = process.argv.find(a => a.startsWith('--refresh='));
-const PAGES_PER_CRAWL = pagesArg ? Math.max(1, parseInt(pagesArg.split('=')[1], 10) || 3) : 3;
-const REFRESH_COUNT = refreshArg ? Math.max(0, parseInt(refreshArg.split('=')[1], 10) || 300) : 300;
-const TOP_POSTS = 20;
+const MAX_PAGES = pagesArg ? Math.max(1, parseInt(pagesArg.split('=')[1], 10) || 3) : 3;
+const REFRESH_COUNT = refreshArg ? Math.max(0, parseInt(refreshArg.split('=')[1], 10) || 50) : 50;
+const TOP_TODAY = 20;
+const TOP_ALLTIME = 20;
 const TOP_ACCOUNTS = 50;
 const COST_PER_READ = 0.005;   // update if X changes pricing
 const DATA_FILE = path.join(__dirname, 'data.json');
@@ -37,13 +51,14 @@ let totalReads = 0;
 
 async function main() {
   const store = loadStore();
-  let newTweets = [], users = {};
+  let newCount = 0;
 
   if (MOCK) {
     console.log('⚡ Mock mode — generating sample data so you can preview the leaderboard.\n');
-    ({ tweets: newTweets, users } = generateMockData());
-    for (const t of newTweets) store.tweets[t.id] = t;
+    const { tweets, users } = generateMockData();
+    for (const t of tweets) store.tweets[t.id] = t;
     for (const u of Object.values(users)) store.users[u.id] = u;
+    newCount = tweets.length;
   } else {
     if (!TOKEN) {
       console.error('❌ No API token found.\n');
@@ -52,51 +67,47 @@ async function main() {
       process.exit(1);
     }
 
-    // Pass 1: biggest posts of the week (X's "Top" ranking)
-    console.log('🏆 Crawl 1/2: top posts (relevancy sort)…');
-    const top = await scanX('relevancy');
+    console.log(`📅 Daily crawl: top $ANSEM posts of the last 24 hours (early-stop below ${fmt(MIN_VIEWS)} views)…`);
+    const daily = await scanLast24h();
+    for (const t of daily.tweets) store.tweets[t.id] = t;
+    for (const u of Object.values(daily.users)) store.users[u.id] = u;
+    newCount = daily.tweets.length;
 
-    // Pass 2: freshest posts
-    console.log('🕐 Crawl 2/2: newest posts (recency sort)…');
-    const fresh = await scanX('recency');
-
-    for (const t of [...top.tweets, ...fresh.tweets]) store.tweets[t.id] = t;
-    for (const u of [...Object.values(top.users), ...Object.values(fresh.users)]) store.users[u.id] = u;
-    newTweets = [...top.tweets, ...fresh.tweets];
-
-    // Pass 3: refresh view counts on posts we're already tracking,
-    // so a post caught at 50 views doesn't stay frozen there.
-    const justFetched = new Set(newTweets.map(t => t.id));
+    const justFetched = new Set(daily.tweets.map(t => t.id));
     await refreshTracked(store, justFetched);
 
     const est = (totalReads * COST_PER_READ).toFixed(2);
-    console.log(`\n💳 Estimated cost this run: ~$${est} (${totalReads} reads × $${COST_PER_READ}; X dedupes repeat reads of the same post within 24h, so actual is often less)`);
+    console.log(`💳 Estimated cost this run: ~$${est} (${totalReads} reads × $${COST_PER_READ}; X dedupes repeat reads within 24h, so actual is often less)\n`);
   }
 
   saveStore(store);
-  pruneAndRender(store, newTweets.length);
+  render(store, newCount);
 }
 
-// ===================== X API CRAWL =====================
+// ===================== DAILY CRAWL (last 24h) =====================
 
-async function scanX(sortOrder) {
+async function scanLast24h() {
   const tweets = [];
   const users = {};
   let nextToken = null;
+  // 24h window, ending 30s ago (the API requires a small buffer before "now")
+  const start = new Date(Date.now() - 24 * 3600000).toISOString();
 
-  for (let page = 1; page <= PAGES_PER_CRAWL; page++) {
+  for (let page = 1; page <= MAX_PAGES; page++) {
     const url = new URL('https://api.x.com/2/tweets/search/recent');
     url.searchParams.set('query', QUERY);
     url.searchParams.set('max_results', '100');
-    url.searchParams.set('sort_order', sortOrder);
+    url.searchParams.set('sort_order', 'relevancy');
+    url.searchParams.set('start_time', start);
     url.searchParams.set('tweet.fields', 'public_metrics,created_at,author_id');
     url.searchParams.set('expansions', 'author_id');
     url.searchParams.set('user.fields', 'username,name,public_metrics,profile_image_url');
     if (nextToken) url.searchParams.set('next_token', nextToken);
 
-    console.log(`   page ${page}/${PAGES_PER_CRAWL}…`);
+    console.log(`   page ${page}/${MAX_PAGES}…`);
     const res = await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } });
 
+    if (res.status === 402) failCreditsDepleted();
     if (res.status === 429) {
       const reset = Number(res.headers.get('x-rate-limit-reset')) * 1000;
       const waitMs = Math.max(reset - Date.now(), 5000);
@@ -111,8 +122,17 @@ async function scanX(sortOrder) {
 
     const data = await res.json();
     ingestUsers(data.includes?.users, users);
-    for (const t of data.data || []) tweets.push(shapeTweet(t));
-    totalReads += (data.data || []).length;
+    const pageTweets = (data.data || []).map(shapeTweet);
+    tweets.push(...pageTweets);
+    totalReads += pageTweets.length;
+
+    // EARLY STOP: relevancy sort is roughly best-first. If most of this
+    // page is already below the threshold, the next page won't earn its 50¢.
+    const below = pageTweets.filter(t => t.impressions < MIN_VIEWS).length;
+    if (pageTweets.length > 0 && below / pageTweets.length > 0.6) {
+      console.log(`   ✋ early stop: ${below}/${pageTweets.length} posts on this page are under ${fmt(MIN_VIEWS)} views — not buying the next page`);
+      break;
+    }
 
     nextToken = data.meta?.next_token;
     if (!nextToken) break;
@@ -127,14 +147,12 @@ async function scanX(sortOrder) {
 
 async function refreshTracked(store, skipIds) {
   const cutoff = Date.now() - 7 * 86400000;
-  // Refresh the most promising tracked posts we did NOT just fetch:
-  // sorted by current impressions, still inside the 7-day window.
   const candidates = Object.values(store.tweets)
     .filter(t => !skipIds.has(t.id) && new Date(t.created_at).getTime() > cutoff)
     .sort((a, b) => b.impressions - a.impressions)
     .slice(0, REFRESH_COUNT);
 
-  if (!candidates.length) { console.log('🔄 Refresh: nothing to update yet.'); return; }
+  if (!candidates.length) { console.log('🔄 Refresh: nothing to update yet.\n'); return; }
   console.log(`🔄 Refresh: updating view counts on ${candidates.length} tracked posts…`);
 
   for (let i = 0; i < candidates.length; i += 100) {
@@ -146,6 +164,7 @@ async function refreshTracked(store, skipIds) {
     url.searchParams.set('user.fields', 'username,name,public_metrics,profile_image_url');
 
     const res = await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    if (res.status === 402) failCreditsDepleted();
     if (res.status === 429) {
       const reset = Number(res.headers.get('x-rate-limit-reset')) * 1000;
       const waitMs = Math.max(reset - Date.now(), 5000);
@@ -168,14 +187,30 @@ async function refreshTracked(store, skipIds) {
   console.log('   → done\n');
 }
 
+function failCreditsDepleted() {
+  console.error('\n' + '═'.repeat(60));
+  console.error('❌ X API CREDITS DEPLETED — the scan cannot continue.');
+  console.error('   Top up credits at developer.x.com, then re-run this');
+  console.error('   workflow. Nothing was published from this partial run.');
+  console.error('═'.repeat(60) + '\n');
+  process.exit(1);
+}
+
 // ===================== SHARED HELPERS =====================
+
+function cleanText(text) {
+  // X's API returns token tags as raw "solana:<contract>" strings — swap back to the cashtag
+  return text
+    .replace(/solana:[1-9A-HJ-NP-Za-km-z]{32,44}/g, () => '$ANSEM')
+    .replace(new RegExp(CONTRACT, 'g'), () => '$ANSEM');
+}
 
 function shapeTweet(t) {
   const m = t.public_metrics || {};
   return {
     id: t.id,
     author_id: t.author_id,
-    text: t.text,
+    text: cleanText(t.text),
     created_at: t.created_at,
     impressions: m.impression_count || 0,
     likes: m.like_count || 0,
@@ -206,13 +241,19 @@ function saveStore(store) {
 
 // ===================== RANK + RENDER =====================
 
-function pruneAndRender(store, newCount) {
+function render(store, newCount) {
   const allTweets = Object.values(store.tweets);
   const allUsers = store.users;
+  const dayAgo = Date.now() - 24 * 3600000;
 
-  const topPosts = [...allTweets]
+  const todayPosts = allTweets
+    .filter(t => new Date(t.created_at).getTime() > dayAgo)
     .sort((a, b) => b.impressions - a.impressions)
-    .slice(0, TOP_POSTS);
+    .slice(0, TOP_TODAY);
+
+  const allTimePosts = [...allTweets]
+    .sort((a, b) => b.impressions - a.impressions)
+    .slice(0, TOP_ALLTIME);
 
   const byAccount = {};
   for (const t of allTweets) {
@@ -232,32 +273,23 @@ function pruneAndRender(store, newCount) {
     .slice(0, TOP_ACCOUNTS);
 
   console.log(`📊 ${allTweets.length} total $ANSEM posts tracked (${newCount} new this run)\n`);
-  console.log('TOP 10 POSTS BY IMPRESSIONS');
+  console.log("TODAY'S TOP 10 BY IMPRESSIONS (last 24h)");
   console.log('─'.repeat(64));
-  topPosts.slice(0, 10).forEach((t, i) => {
+  todayPosts.slice(0, 10).forEach((t, i) => {
     const u = allUsers[t.author_id];
     console.log(`${String(i + 1).padStart(2)}. ${fmt(t.impressions).padStart(7)} views  @${u ? u.username : '?'} — "${t.text.slice(0, 50).replace(/\n/g, ' ')}…"`);
   });
 
-  fs.writeFileSync(HTML_FILE, buildHtml(topPosts, topAccounts, allUsers, allTweets.length));
-  console.log(`\n✅ Leaderboard written to ${HTML_FILE}`);
-}
-
-function fmt(n) {
-  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
-  return String(n);
-}
-
-function buildHtml(topPosts, topAccounts, users, totalTracked) {
+  const shape = t => ({
+    ...t,
+    username: allUsers[t.author_id]?.username || 'unknown',
+    name: allUsers[t.author_id]?.name || 'Unknown',
+  });
   const payload = {
     generated: new Date().toISOString(),
-    totalTracked,
-    posts: topPosts.map(t => ({
-      ...t,
-      username: users[t.author_id]?.username || 'unknown',
-      name: users[t.author_id]?.name || 'Unknown',
-    })),
+    totalTracked: allTweets.length,
+    today: todayPosts.map(shape),
+    allTime: allTimePosts.map(shape),
     accounts: topAccounts.map(a => ({
       username: a.user.username,
       name: a.user.name,
@@ -266,12 +298,19 @@ function buildHtml(topPosts, topAccounts, users, totalTracked) {
       likes: a.likes,
       retweets: a.retweets,
       posts: a.posts,
-      bestPostId: a.bestPost?.id,
       bestPostImpressions: a.bestPost?.impressions || 0,
     })),
   };
+
   const template = fs.readFileSync(path.join(__dirname, 'template.html'), 'utf8');
-  return template.replace('/*__DATA__*/', 'const DATA = ' + JSON.stringify(payload) + ';');
+  fs.writeFileSync(HTML_FILE, template.replace('/*__DATA__*/', 'const DATA = ' + JSON.stringify(payload) + ';'));
+  console.log(`\n✅ Leaderboard written to ${HTML_FILE}`);
+}
+
+function fmt(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(n);
 }
 
 // ===================== MOCK DATA =====================
@@ -305,11 +344,13 @@ function generateMockData() {
     const postCount = 1 + Math.floor(rand() * 6);
     for (let p = 0; p < postCount; p++) {
       const reach = Math.floor((rand() ** 2.2) * (users[id].followers * 8 + 50000)) + 800;
+      // Mix of last-24h posts (for the Today tab) and older ones (for All-Time)
+      const ageMs = rand() < 0.5 ? rand() * 22 * 3600000 : (1 + rand() * 5.5) * 86400000;
       tweets.push({
         id: `t${i}_${p}_${Math.floor(rand() * 1e6)}`,
         author_id: id,
         text: templates[Math.floor(rand() * templates.length)],
-        created_at: new Date(Date.now() - rand() * 6.5 * 86400000).toISOString(),
+        created_at: new Date(Date.now() - ageMs).toISOString(),
         impressions: reach,
         likes: Math.floor(reach * (0.008 + rand() * 0.03)),
         retweets: Math.floor(reach * (0.001 + rand() * 0.008)),
@@ -321,4 +362,3 @@ function generateMockData() {
 }
 
 main().catch(e => { console.error('Fatal:', e); process.exit(1); });
- 

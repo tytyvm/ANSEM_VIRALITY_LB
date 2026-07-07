@@ -1,15 +1,16 @@
 name: Scan $ANSEM
 
-# Runs the scanner in the cloud. Two ways it triggers:
-#   1. On a schedule (weekly) — keeps the leaderboard fresh automatically.
-#   2. Manually — click "Run workflow" in the Actions tab whenever you want.
+# Runs the daily scanner in the cloud. Two ways it triggers:
+#   1. On a schedule — every night at 11:30 PM ET, so the "Today" board
+#      captures a full day before you post it.
+#   2. Manually — click "Run workflow" in the Actions tab anytime.
 on:
   schedule:
-    - cron: '0 13 * * 1'      # every Monday at 13:00 UTC (~9am ET). Change if you like.
+    - cron: '30 3 * * *'      # 03:30 UTC = 11:30 PM ET daily
   workflow_dispatch:
     inputs:
       pages:
-        description: 'How many pages to scan (100 posts each, ~$0.50/page)'
+        description: 'Max pages for the daily crawl (100 posts each, ~$0.50/page — early-stop usually spends less)'
         required: false
         default: '3'
 
@@ -29,7 +30,7 @@ jobs:
           node-version: '22'
 
       - name: Run the scanner
-        working-directory: ansem-leaderboard      # <-- the files live in this subfolder
+        working-directory: ansem-leaderboard
         env:
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
         run: node scanner.js --pages=${{ github.event.inputs.pages || '3' }}
@@ -39,5 +40,5 @@ jobs:
           git config user.name "ansem-bot"
           git config user.email "actions@github.com"
           git add ansem-leaderboard/index.html ansem-leaderboard/data.json
-          git commit -m "Update leaderboard $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "Nothing changed"
+          git commit -m "Daily leaderboard $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "Nothing changed"
           git push
