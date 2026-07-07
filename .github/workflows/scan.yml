@@ -1,11 +1,11 @@
 name: Scan $ANSEM
 
 # Runs the scanner in the cloud. Two ways it triggers:
-#   1. On a schedule (daily) — keeps the leaderboard fresh automatically.
+#   1. On a schedule (weekly) — keeps the leaderboard fresh automatically.
 #   2. Manually — click "Run workflow" in the Actions tab whenever you want.
 on:
   schedule:
-    - cron: '0 13 * * *'      # every day at 13:00 UTC (~9am ET). Change if you like.
+    - cron: '0 13 * * 1'      # every Monday at 13:00 UTC (~9am ET). Change if you like.
   workflow_dispatch:
     inputs:
       pages:
@@ -26,9 +26,10 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Run the scanner
+        working-directory: ansem-leaderboard      # <-- the files live in this subfolder
         env:
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
         run: node scanner.js --pages=${{ github.event.inputs.pages || '3' }}
@@ -37,6 +38,6 @@ jobs:
         run: |
           git config user.name "ansem-bot"
           git config user.email "actions@github.com"
-          git add index.html data.json
+          git add ansem-leaderboard/index.html ansem-leaderboard/data.json
           git commit -m "Update leaderboard $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "Nothing changed"
           git push
