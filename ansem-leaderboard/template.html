@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>$ANSEM Daily Leaderboard</title>
+<title>$ANSEM Daily Top 20</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -29,14 +29,14 @@
   }
   .wrap { max-width: 860px; margin: 0 auto; padding: 0 20px; }
 
-  header { padding: 56px 0 28px; border-bottom: 1px solid var(--line); }
+  header { padding: 56px 0 28px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
   .eyebrow { font-size: 11px; letter-spacing: 0.22em; color: var(--dim); text-transform: uppercase; }
   h1 {
     font-family: 'Unbounded', sans-serif;
     font-weight: 900;
     font-size: clamp(28px, 6vw, 52px);
     line-height: 1.05;
-    margin: 10px 0 14px;
+    margin: 10px 0 6px;
   }
   h1 .ticker {
     background: linear-gradient(90deg, var(--sol-a), var(--sol-b));
@@ -44,25 +44,15 @@
     background-clip: text;
     color: transparent;
   }
+  .board-date {
+    font-family: 'Unbounded', sans-serif;
+    font-weight: 700;
+    font-size: clamp(14px, 2.5vw, 18px);
+    color: var(--dim);
+    margin-bottom: 16px;
+  }
   .meta { font-size: 12px; color: var(--dim); display: flex; gap: 24px; flex-wrap: wrap; }
   .meta b { color: var(--text); font-weight: 600; }
-
-  nav { display: flex; gap: 8px; margin: 24px 0; flex-wrap: wrap; }
-  .tab {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 13px; font-weight: 600;
-    letter-spacing: 0.06em;
-    padding: 10px 18px;
-    background: transparent;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    color: var(--dim);
-    cursor: pointer;
-  }
-  .tab.active { color: var(--bg); background: var(--text); border-color: var(--text); }
-  .tab:focus-visible { outline: 2px solid var(--sol-b); outline-offset: 2px; }
-
-  .board-note { font-size: 12px; color: var(--dim); margin: -8px 0 18px; }
 
   .row {
     display: grid;
@@ -114,28 +104,19 @@
 <div class="wrap">
   <header>
     <div class="eyebrow">Daily Bagwork Leaderboard · Ranked by Impressions</div>
-    <h1><span class="ticker">$ANSEM</span> VIRALITY BOARD</h1>
+    <h1><span class="ticker">$ANSEM</span> DAILY TOP 20</h1>
+    <div class="board-date" id="m-date"></div>
     <div class="meta">
-      <span>Board date: <b id="m-date"></b></span>
-      <span>Posts tracked: <b id="m-total"></b></span>
       <span>Last scan: <b id="m-updated"></b></span>
+      <span>Window: <b>last 24 hours</b></span>
     </div>
   </header>
 
-  <nav>
-    <button class="tab active" id="tab-today" onclick="show('today')">TODAY'S TOP 20</button>
-    <button class="tab" id="tab-alltime" onclick="show('alltime')">ALL-TIME TOP 20</button>
-    <button class="tab" id="tab-accounts" onclick="show('accounts')">TOP 50 ACCOUNTS</button>
-  </nav>
-
-  <div class="board-note" id="board-note"></div>
   <main id="board"></main>
 
   <footer>
-    Impressions are X's own view counts (public_metrics). TODAY = posts from the last
-    24 hours before the scan. ALL-TIME = the biggest posts since tracking began — view
-    counts on tracked posts get re-checked each day so numbers keep maturing. Accounts
-    are ranked by total impressions across every tracked $ANSEM post they made.
+    The most-viewed $ANSEM posts of the last 24 hours. Impressions are X's own view
+    counts (public_metrics). Updated nightly.
   </footer>
 </div>
 
@@ -148,67 +129,32 @@ const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1).replace(/\.0$/,'') + 'M'
 const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 const scanDate = new Date(DATA.generated);
-document.getElementById('m-date').textContent = scanDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-document.getElementById('m-total').textContent = DATA.totalTracked.toLocaleString();
+document.getElementById('m-date').textContent = scanDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 document.getElementById('m-updated').textContent = scanDate.toLocaleString();
 
 function rankClass(i) { return i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : ''; }
 
-function postRows(list) {
-  if (!list.length) return '<div class="empty">No posts captured in this window yet — check back after the next scan.</div>';
-  const max = Math.max(...list.map(p => p.impressions), 1);
-  return list.map((p, i) => `
-    <a class="row" href="https://x.com/${esc(p.username)}/status/${esc(p.id)}" target="_blank" rel="noopener">
-      <div class="rank ${rankClass(i)}">${String(i+1).padStart(2,'0')}</div>
-      <div>
-        <div class="who"><span class="handle">@${esc(p.username)}</span><span class="name">${esc(p.name)}</span></div>
-        <div class="snippet">${esc(p.text.length > 180 ? p.text.slice(0,180) + '…' : p.text)}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(p.impressions/max*100, 1.5)}%"></div></div>
-        <div class="stats">
-          <span class="impr"><b>${fmt(p.impressions)}</b> views</span>
-          <span><b>${fmt(p.likes)}</b> likes</span>
-          <span><b>${fmt(p.retweets)}</b> reposts</span>
-          <span><b>${fmt(p.replies)}</b> replies</span>
-        </div>
-      </div>
-    </a>`).join('');
-}
-
-function accountRows() {
-  if (!DATA.accounts.length) return '<div class="empty">No accounts tracked yet.</div>';
-  const max = Math.max(...DATA.accounts.map(a => a.impressions), 1);
-  return DATA.accounts.map((a, i) => `
-    <a class="row" href="https://x.com/${esc(a.username)}" target="_blank" rel="noopener">
-      <div class="rank ${rankClass(i)}">${String(i+1).padStart(2,'0')}</div>
-      <div>
-        <div class="who"><span class="handle">@${esc(a.username)}</span><span class="name">${esc(a.name)} · ${fmt(a.followers)} followers</span></div>
-        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(a.impressions/max*100, 1.5)}%"></div></div>
-        <div class="stats">
-          <span class="impr"><b>${fmt(a.impressions)}</b> total views</span>
-          <span><b>${a.posts}</b> $ANSEM posts</span>
-          <span><b>${fmt(a.likes)}</b> likes</span>
-          <span>best post: <b>${fmt(a.bestPostImpressions)}</b> views</span>
-        </div>
-      </div>
-    </a>`).join('');
-}
-
-const notes = {
-  today: "The most-viewed $ANSEM posts of the last 24 hours.",
-  alltime: "The biggest $ANSEM posts since tracking began. View counts keep maturing as daily scans re-check them.",
-  accounts: "Ranked by total impressions across every tracked $ANSEM post."
-};
-
-function show(which) {
-  for (const t of ['today', 'alltime', 'accounts'])
-    document.getElementById('tab-' + t).classList.toggle('active', which === t);
-  document.getElementById('board-note').textContent = notes[which];
-  document.getElementById('board').innerHTML =
-    which === 'today' ? postRows(DATA.today)
-    : which === 'alltime' ? postRows(DATA.allTime)
-    : accountRows();
-}
-show('today');
+const list = DATA.today || [];
+document.getElementById('board').innerHTML = !list.length
+  ? '<div class="empty">No posts captured in this window yet — check back after the next scan.</div>'
+  : (() => {
+      const max = Math.max(...list.map(p => p.impressions), 1);
+      return list.map((p, i) => `
+        <a class="row" href="https://x.com/${esc(p.username)}/status/${esc(p.id)}" target="_blank" rel="noopener">
+          <div class="rank ${rankClass(i)}">${String(i+1).padStart(2,'0')}</div>
+          <div>
+            <div class="who"><span class="handle">@${esc(p.username)}</span><span class="name">${esc(p.name)}</span></div>
+            <div class="snippet">${esc(p.text.length > 180 ? p.text.slice(0,180) + '…' : p.text)}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.max(p.impressions/max*100, 1.5)}%"></div></div>
+            <div class="stats">
+              <span class="impr"><b>${fmt(p.impressions)}</b> views</span>
+              <span><b>${fmt(p.likes)}</b> likes</span>
+              <span><b>${fmt(p.retweets)}</b> reposts</span>
+              <span><b>${fmt(p.replies)}</b> replies</span>
+            </div>
+          </div>
+        </a>`).join('');
+    })();
 </script>
 </body>
 </html>
