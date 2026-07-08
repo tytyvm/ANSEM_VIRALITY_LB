@@ -35,10 +35,13 @@ jobs:
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
         run: node scanner.js --pages=${{ github.event.inputs.pages || '3' }}
 
+      - name: Copy page to repo root for GitHub Pages
+        run: cp ansem-leaderboard/index.html index.html
+
       - name: Save results back to the repo
         run: |
           git config user.name "ansem-bot"
           git config user.email "actions@github.com"
-          git add ansem-leaderboard/index.html ansem-leaderboard/data.json
+          git add index.html ansem-leaderboard/index.html ansem-leaderboard/data.json
           git commit -m "Daily leaderboard $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "Nothing changed"
           git push
